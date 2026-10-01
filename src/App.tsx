@@ -1,529 +1,726 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-// Вайб-промпты для генератора
-const vibePrompts = [
-  "Сделай сайт с анимацией космоса и летающими планетами 🪐",
-  "Хочу дашборд с неоновыми графиками в стиле киберпанк 🌃",
-  "Создай лендинг для кофейни с параллаксом ☕",
-  "Нужен генератор мемов с drag-and-drop 😂",
-  "Сделай музыкальный плеер с визуализацией звука 🎵",
-  "Хочу чат-приложение с эмодзи-реакциями 💬",
-  "Создай портфолио с 3D-эффектами при скролле 🎨",
-  "Нужен таск-менеджер в стиле ретро-игры 👾",
-  "Сделай погоду с анимированными иконками ☀️🌧️",
-  "Хочу генератор градиентов с копированием CSS 🎨",
-  "Создай таймер Помодоро с мотивационными цитатами 🍅",
-  "Нужен калькулятор калорий с красивыми диаграммами 🥗",
-  "Сделай галерею с masonry-раскладкой и лайтбоксом 📸",
-  "Хочу квиз с таймером и анимированными переходами 🧠",
-  "Создай страницу 404 с мини-игрой 🎮",
-];
+// Типы и константы
+type SmeltStage = 'loading' | 'heating' | 'melting' | 'refining' | 'tapping' | 'idle';
 
-// Уровни вайба
-const vibeLevels = [
-  { level: "Новичок", emoji: "🌱", description: "Сделай кнопку", color: "from-green-500 to-emerald-500" },
-  { level: "Уверенный", emoji: "🚀", description: "Сделай лендинг с анимациями", color: "from-blue-500 to-cyan-500" },
-  { level: "Продвинутый", emoji: "⚡", description: "Сделай SaaS с дашбордом и авторизацией", color: "from-purple-500 to-violet-500" },
-  { level: "Мастер", emoji: "🔥", description: "Сделай клон Spotify с AI-рекомендациями", color: "from-orange-500 to-red-500" },
-  { level: "Легенда", emoji: "👑", description: "Сделай ОС в браузере", color: "from-yellow-400 to-amber-500" },
-];
-
-// Фразы для терминала
-const terminalLines = [
-  { type: "command", text: "$ vibe init my-awesome-project" },
-  { type: "output", text: "✨ Инициализация вайба..." },
-  { type: "output", text: "🎨 Подбираю цветовую палитру..." },
-  { type: "output", text: "⚡ Генерирую компоненты..." },
-  { type: "output", text: "🎭 Добавляю анимации..." },
-  { type: "success", text: "✅ Проект создан! Вайб: 100%" },
-  { type: "command", text: "$ vibe deploy --feeling=amazing" },
-  { type: "output", text: "🚀 Деплой на орбиту..." },
-  { type: "success", text: "🌍 Сайт в космосе! Пользователи в восторге!" },
-];
-
-function Particles() {
-  const particles = Array.from({ length: 20 }, (_, i) => ({
-    id: i,
-    left: Math.random() * 100,
-    size: Math.random() * 4 + 2,
-    duration: Math.random() * 15 + 10,
-    delay: Math.random() * 10,
-    color: ['#8b5cf6', '#ec4899', '#06b6d4', '#f59e0b'][Math.floor(Math.random() * 4)],
-  }));
-
-  return (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-      {particles.map((p) => (
-        <div
-          key={p.id}
-          className="particle"
-          style={{
-            left: `${p.left}%`,
-            width: `${p.size}px`,
-            height: `${p.size}px`,
-            backgroundColor: p.color,
-            animationDuration: `${p.duration}s`,
-            animationDelay: `${p.delay}s`,
-            boxShadow: `0 0 ${p.size * 2}px ${p.color}`,
-          }}
-        />
-      ))}
-    </div>
-  );
+interface FurnaceState {
+  temperature: number;
+  targetTemp: number;
+  airFlow: number;
+  fuelFlow: number;
+  meltLevel: number;
+  carbonContent: number;
+  stage: SmeltStage;
+  isRunning: boolean;
+  scrapLoaded: number;
+  pigIronLoaded: number;
+  limestoneLoaded: number;
+  oxygenFlow: number;
+  slagAmount: number;
+  elapsed: number;
 }
 
-function VibeGenerator() {
-  const [currentPrompt, setCurrentPrompt] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [vibeLevel, setVibeLevel] = useState(0);
+const STAGE_INFO: Record<SmeltStage, { name: string; emoji: string; desc: string; color: string }> = {
+  loading: { name: 'Завалка шихты', emoji: '📦', desc: 'Загрузка металлолома, чугуна и флюсов', color: 'from-blue-500 to-cyan-500' },
+  heating: { name: 'Разогрев', emoji: '🔥', desc: 'Нагрев шихты до температуры плавления', color: 'from-yellow-500 to-orange-500' },
+  melting: { name: 'Плавление', emoji: '💧', desc: 'Расплавление металлической шихты', color: 'from-orange-500 to-red-500' },
+  refining: { name: 'Рафинирование', emoji: '⚗️', desc: 'Удаление примесей, корректировка состава', color: 'from-red-500 to-purple-500' },
+  tapping: { name: 'Выпуск стали', emoji: '🌊', desc: 'Слив готовой стали из печи', color: 'from-purple-500 to-pink-500' },
+  idle: { name: 'Ожидание', emoji: '⏸️', desc: 'Печь в режиме ожидания', color: 'from-gray-500 to-gray-600' },
+};
 
-  const generatePrompt = useCallback(() => {
-    setIsGenerating(true);
-    setCurrentPrompt('');
-    const prompt = vibePrompts[Math.floor(Math.random() * vibePrompts.length)];
-    let index = 0;
-    const interval = setInterval(() => {
-      if (index < prompt.length) {
-        setCurrentPrompt(prompt.slice(0, index + 1));
-        index++;
-      } else {
-        clearInterval(interval);
-        setIsGenerating(false);
-        setVibeLevel(Math.floor(Math.random() * 40) + 60);
-      }
-    }, 50);
-  }, []);
-
-  useEffect(() => {
-    generatePrompt();
-  }, [generatePrompt]);
+// SVG Компонент печи
+function FurnaceSVG({ state }: { state: FurnaceState }) {
+  const flameIntensity = state.temperature / 1800;
+  const meltHeight = state.meltLevel;
 
   return (
-    <div className="glass-card p-8 relative overflow-hidden">
-      <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl" />
-      <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-        <span className="text-2xl">🎲</span> Генератор вайб-промптов
-      </h3>
-      <div className="bg-black/30 rounded-xl p-6 min-h-[100px] flex items-center justify-center mb-6">
-        <p className="text-lg text-center text-purple-200 font-mono">
-          {currentPrompt}
-          {isGenerating && <span className="cursor-blink text-purple-400">▌</span>}
-        </p>
-      </div>
-      <div className="mb-4">
-        <div className="flex justify-between text-sm mb-2">
-          <span className="text-gray-400">Уровень вайба</span>
-          <span className="text-purple-400 font-bold">{vibeLevel}%</span>
-        </div>
-        <div className="vibe-meter">
-          <div className="vibe-meter-fill" style={{ width: `${vibeLevel}%` }} />
-        </div>
-      </div>
-      <button
-        onClick={generatePrompt}
-        disabled={isGenerating}
-        className="w-full py-3 px-6 rounded-xl font-bold text-white
-                   bg-gradient-to-r from-purple-600 to-pink-600
-                   hover:from-purple-500 hover:to-pink-500
-                   transition-all duration-300 transform hover:scale-[1.02]
-                   disabled:opacity-50 disabled:cursor-not-allowed
-                   shadow-lg shadow-purple-500/25"
-      >
-        {isGenerating ? '✨ Генерирую...' : '🎰 Новый вайб!'}
-      </button>
-    </div>
-  );
-}
+    <svg viewBox="0 0 400 500" className="w-full max-w-md mx-auto drop-shadow-2xl">
+      <defs>
+        <linearGradient id="furnaceBody" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#4a4a5a" />
+          <stop offset="50%" stopColor="#3a3a4a" />
+          <stop offset="100%" stopColor="#2a2a3a" />
+        </linearGradient>
+        <linearGradient id="flameGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+          <stop offset="0%" stopColor="#ff4500" />
+          <stop offset="40%" stopColor="#ff8c00" />
+          <stop offset="70%" stopColor="#ffd700" />
+          <stop offset="100%" stopColor="#fff8dc" />
+        </linearGradient>
+        <linearGradient id="meltGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#ff6b35" />
+          <stop offset="50%" stopColor="#ff4500" />
+          <stop offset="100%" stopColor="#cc3700" />
+        </linearGradient>
+        <radialGradient id="glowGrad">
+          <stop offset="0%" stopColor={`rgba(255, 100, 0, ${flameIntensity * 0.6})`} />
+          <stop offset="100%" stopColor="rgba(255, 100, 0, 0)" />
+        </radialGradient>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+          <feMerge>
+            <feMergeNode in="coloredBlur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+        <clipPath id="chamberClip">
+          <rect x="100" y="180" width="200" height="200" rx="10" />
+        </clipPath>
+      </defs>
 
-function Terminal() {
-  const [visibleLines, setVisibleLines] = useState(0);
-  const [isTyping, setIsTyping] = useState(true);
+      {/* Основание */}
+      <rect x="60" y="420" width="280" height="60" rx="5" fill="#2a2a3a" stroke="#555" strokeWidth="2" />
+      <rect x="80" y="440" width="240" height="20" rx="3" fill="#1a1a2a" />
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setVisibleLines((prev) => {
-        if (prev >= terminalLines.length) {
-          clearInterval(timer);
-          setIsTyping(false);
-          // Restart after delay
-          setTimeout(() => {
-            setVisibleLines(0);
-            setIsTyping(true);
-          }, 3000);
-          return prev;
-        }
-        return prev + 1;
-      });
-    }, 800);
-    return () => clearInterval(timer);
-  }, [isTyping]);
+      {/* Корпус печи */}
+      <rect x="80" y="150" width="240" height="270" rx="15" fill="url(#furnaceBody)" stroke="#666" strokeWidth="3" />
 
-  return (
-    <div className="terminal shadow-2xl shadow-purple-500/10">
-      <div className="terminal-header">
-        <div className="terminal-dot bg-red-500" />
-        <div className="terminal-dot bg-yellow-500" />
-        <div className="terminal-dot bg-green-500" />
-        <span className="ml-4 text-sm text-gray-400 font-mono">vibe-terminal</span>
-      </div>
-      <div className="terminal-body">
-        {terminalLines.slice(0, visibleLines).map((line, i) => (
-          <div
-            key={i}
-            className={`slide-up ${
-              line.type === 'command'
-                ? 'text-green-400'
-                : line.type === 'success'
-                ? 'text-yellow-300 font-bold'
-                : 'text-gray-300'
-            }`}
-            style={{ animationDelay: `${i * 0.1}s` }}
+      {/* Свод печи (арка) */}
+      <path d="M 80 180 Q 200 100 320 180" fill="url(#furnaceBody)" stroke="#666" strokeWidth="3" />
+      <path d="M 100 180 Q 200 120 300 180" fill="#1a1a2a" stroke="#444" strokeWidth="1" />
+
+      {/* Рабочее пространство (камера) */}
+      <rect x="100" y="180" width="200" height="200" rx="10" fill="#0a0a0a" stroke="#444" strokeWidth="1" />
+
+      {/* Расплав */}
+      {state.meltLevel > 0 && (
+        <g clipPath="url(#chamberClip)">
+          <rect
+            x="100"
+            y={380 - meltHeight * 2}
+            width="200"
+            height={meltHeight * 2}
+            fill="url(#meltGrad)"
+            opacity="0.9"
           >
-            {line.text}
-          </div>
-        ))}
-        {isTyping && visibleLines < terminalLines.length && (
-          <span className="cursor-blink text-green-400">▌</span>
-        )}
-      </div>
-    </div>
+            <animate attributeName="y" values={`${380 - meltHeight * 2};${378 - meltHeight * 2};${380 - meltHeight * 2}`} dur="2s" repeatCount="indefinite" />
+          </rect>
+          {/* Пузыри в расплаве */}
+          {state.temperature > 800 && Array.from({ length: 5 }).map((_, i) => (
+            <circle
+              key={i}
+              cx={140 + i * 30}
+              cy={370 - meltHeight}
+              r="3"
+              fill="#ffaa00"
+              opacity="0.7"
+            >
+              <animate attributeName="cy" values={`${370 - meltHeight};${340 - meltHeight};${370 - meltHeight}`} dur={`${1 + i * 0.3}s`} repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.7;0.2;0.7" dur={`${1 + i * 0.3}s`} repeatCount="indefinite" />
+            </circle>
+          ))}
+        </g>
+      )}
+
+      {/* Пламя */}
+      {state.temperature > 100 && (
+        <g filter="url(#glow)" opacity={Math.min(flameIntensity * 1.5, 1)}>
+          {Array.from({ length: 7 }).map((_, i) => (
+            <ellipse
+              key={i}
+              cx={130 + i * 25}
+              cy="190"
+              rx={8 + Math.random() * 4}
+              ry={20 + flameIntensity * 30}
+              fill="url(#flameGrad)"
+              opacity={0.6 + Math.random() * 0.3}
+            >
+              <animate
+                attributeName="ry"
+                values={`${20 + flameIntensity * 25};${25 + flameIntensity * 35};${20 + flameIntensity * 25}`}
+                dur={`${0.5 + i * 0.1}s`}
+                repeatCount="indefinite"
+              />
+              <animate
+                attributeName="rx"
+                values={`${8};${10};${8}`}
+                dur={`${0.7 + i * 0.1}s`}
+                repeatCount="indefinite"
+              />
+            </ellipse>
+          ))}
+        </g>
+      )}
+
+      {/* Свечение */}
+      {state.temperature > 200 && (
+        <ellipse cx="200" cy="280" rx="120" ry="100" fill="url(#glowGrad)" />
+      )}
+
+      {/* Портал загрузки (верх) */}
+      <rect x="160" y="105" width="80" height="30" rx="5" fill="#3a3a4a" stroke="#666" strokeWidth="2" />
+      <rect x="170" y="110" width="60" height="20" rx="3" fill={state.stage === 'loading' ? '#1a4a1a' : '#1a1a2a'} />
+      {state.stage === 'loading' && (
+        <text x="200" y="124" textAnchor="middle" fill="#4ade80" fontSize="10" fontFamily="monospace">OPEN</text>
+      )}
+
+      {/* Горелки (слева и справа) */}
+      <rect x="60" y="250" width="40" height="20" rx="3" fill="#555" stroke="#666" strokeWidth="1" />
+      <rect x="300" y="250" width="40" height="20" rx="3" fill="#555" stroke="#666" strokeWidth="1" />
+      {state.fuelFlow > 0 && (
+        <>
+          <ellipse cx="80" cy="260" rx="15" ry="5" fill="#ff6600" opacity="0.8">
+            <animate attributeName="rx" values="15;18;15" dur="0.3s" repeatCount="indefinite" />
+          </ellipse>
+          <ellipse cx="320" cy="260" rx="15" ry="5" fill="#ff6600" opacity="0.8">
+            <animate attributeName="rx" values="15;18;15" dur="0.3s" repeatCount="indefinite" />
+          </ellipse>
+        </>
+      )}
+
+      {/* Выпускное отверстие */}
+      <rect x="180" y="385" width="40" height="35" rx="3" fill="#3a3a4a" stroke="#666" strokeWidth="2" />
+      {state.stage === 'tapping' && (
+        <g>
+          <rect x="190" y="400" width="20" height="30" fill="#ff4500" opacity="0.9">
+            <animate attributeName="height" values="30;35;30" dur="0.5s" repeatCount="indefinite" />
+          </rect>
+          <ellipse cx="200" cy="435" rx="15" ry="5" fill="#ff4500" opacity="0.5">
+            <animate attributeName="rx" values="15;20;15" dur="0.8s" repeatCount="indefinite" />
+          </ellipse>
+        </g>
+      )}
+
+      {/* Дымовая труба */}
+      <rect x="280" y="60" width="30" height="100" rx="3" fill="#3a3a4a" stroke="#555" strokeWidth="2" />
+      {state.temperature > 300 && (
+        <g opacity="0.4">
+          <ellipse cx="295" cy="50" rx="12" ry="8" fill="#888">
+            <animate attributeName="cy" values="50;20;50" dur="3s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.4;0.1;0.4" dur="3s" repeatCount="indefinite" />
+          </ellipse>
+          <ellipse cx="295" cy="35" rx="15" ry="10" fill="#666">
+            <animate attributeName="cy" values="35;5;35" dur="4s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.3;0.05;0.3" dur="4s" repeatCount="indefinite" />
+          </ellipse>
+        </g>
+      )}
+
+      {/* Метки температуры */}
+      <text x="340" y="200" fill="#888" fontSize="9" fontFamily="monospace">{state.temperature}°C</text>
+      <line x1="320" y1="195" x2="335" y2="195" stroke="#888" strokeWidth="1" />
+
+      {/* Метка уровня */}
+      {state.meltLevel > 0 && (
+        <>
+          <line x1="90" y1={380 - meltHeight * 2} x2="100" y2={380 - meltHeight * 2} stroke="#ff6b35" strokeWidth="1" strokeDasharray="3,2" />
+          <text x="55" y={383 - meltHeight * 2} fill="#ff6b35" fontSize="8" fontFamily="monospace">{Math.round(state.meltLevel)}%</text>
+        </>
+      )}
+    </svg>
   );
 }
 
-function VibeLevels() {
-  const [activeLevel, setActiveLevel] = useState(0);
-
+// Компонент индикатора
+function Gauge({ value, max, label, unit, color, icon }: { value: number; max: number; label: string; unit: string; color: string; icon: string }) {
+  const percentage = Math.min((value / max) * 100, 100);
   return (
-    <div className="glass-card p-8">
-      <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-        <span className="text-2xl">📊</span> Уровни вайбкодера
-      </h3>
-      <div className="space-y-3">
-        {vibeLevels.map((level, i) => (
-          <div
-            key={i}
-            className={`p-4 rounded-xl cursor-pointer transition-all duration-300 ${
-              activeLevel === i
-                ? 'bg-white/10 border border-purple-500/50 scale-[1.02]'
-                : 'bg-white/[0.02] border border-transparent hover:bg-white/5'
-            }`}
-            onClick={() => setActiveLevel(i)}
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">{level.emoji}</span>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className={`font-bold bg-gradient-to-r ${level.color} bg-clip-text text-transparent`}>
-                    {level.level}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-400 mt-1">{level.description}</p>
-              </div>
-              {activeLevel === i && (
-                <div className="w-3 h-3 rounded-full bg-purple-500 pulse-ring" />
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function EmojiRain({ emoji }: { emoji: string }) {
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-
-  useEffect(() => {
-    setPosition({
-      x: Math.random() * window.innerWidth,
-      y: window.innerHeight - 100,
-    });
-  }, []);
-
-  return (
-    <div
-      className="emoji-float"
-      style={{ left: position.x, top: position.y }}
-    >
-      {emoji}
-    </div>
-  );
-}
-
-function InteractiveSection() {
-  const [clicks, setClicks] = useState(0);
-  const [emojis, setEmojis] = useState<{ id: number; emoji: string }[]>([]);
-  const emojisList = ['✨', '🔥', '💜', '⚡', '🚀', '🎨', '💫', '🌟'];
-
-  const handleClick = () => {
-    setClicks((c) => c + 1);
-    const emoji = emojisList[Math.floor(Math.random() * emojisList.length)];
-    const id = Date.now();
-    setEmojis((prev) => [...prev, { id, emoji }]);
-    setTimeout(() => {
-      setEmojis((prev) => prev.filter((e) => e.id !== id));
-    }, 3000);
-  };
-
-  const getVibeMessage = () => {
-    if (clicks === 0) return "Нажми кнопку 👆";
-    if (clicks < 5) return "Погнали! 🚀";
-    if (clicks < 15) return "Вайб нарастает! ⚡";
-    if (clicks < 30) return "МАКСИМАЛЬНЫЙ ВИБ! 🔥";
-    if (clicks < 50) return "ТЫ ЛЕГЕНДА! 👑";
-    return "ВАЙБКОДЕР БЕСКОНЕЧНОСТИ ∞";
-  };
-
-  return (
-    <div className="glass-card p-8 text-center relative overflow-hidden">
-      {emojis.map((e) => (
-        <EmojiRain key={e.id} emoji={e.emoji} />
-      ))}
-      <h3 className="text-xl font-bold mb-4 flex items-center justify-center gap-2">
-        <span className="text-2xl">🎯</span> Кнопка вайба
-      </h3>
-      <p className="text-gray-400 mb-6 text-lg">{getVibeMessage()}</p>
-      <button
-        onClick={handleClick}
-        className="relative w-32 h-32 rounded-full mx-auto
-                   bg-gradient-to-br from-purple-600 via-pink-500 to-orange-500
-                   hover:from-purple-500 hover:via-pink-400 hover:to-orange-400
-                   transition-all duration-300 transform hover:scale-110 active:scale-95
-                   shadow-2xl shadow-purple-500/30
-                   flex items-center justify-center text-4xl"
-      >
-        <span className="relative z-10">
-          {clicks < 5 ? '🎵' : clicks < 15 ? '⚡' : clicks < 30 ? '🔥' : clicks < 50 ? '👑' : '∞'}
+    <div className="glass-card p-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm text-gray-400 flex items-center gap-1">
+          <span>{icon}</span> {label}
         </span>
-        {clicks > 0 && (
-          <div className="absolute inset-0 rounded-full border-2 border-purple-400/50 pulse-ring" />
-        )}
-      </button>
-      <div className="mt-6 text-3xl font-black bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-        {clicks}
+        <span className={`text-lg font-bold bg-gradient-to-r ${color} bg-clip-text text-transparent`}>
+          {typeof value === 'number' ? (value > 100 ? Math.round(value) : value.toFixed(1)) : value}
+          <span className="text-xs text-gray-500 ml-1">{unit}</span>
+        </span>
       </div>
-      <p className="text-sm text-gray-500 mt-1">вайб-кликов</p>
+      <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+        <div
+          className={`h-full rounded-full bg-gradient-to-r ${color} transition-all duration-500`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
     </div>
   );
 }
 
-function StatsSection() {
-  const [counts, setCounts] = useState({ projects: 0, lines: 0, vibes: 0, bugs: 0 });
+// Компонент кнопки управления
+function ControlButton({ onClick, disabled, children, variant = 'default' }: { onClick: () => void; disabled?: boolean; children: React.ReactNode; variant?: 'default' | 'danger' | 'success' }) {
+  const variants = {
+    default: 'from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 shadow-purple-500/20',
+    danger: 'from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 shadow-red-500/20',
+    success: 'from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 shadow-green-500/20',
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`px-4 py-2.5 rounded-xl font-semibold text-white text-sm
+                 bg-gradient-to-r ${variants[variant]}
+                 transition-all duration-300 transform hover:scale-105 active:scale-95
+                 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100
+                 shadow-lg`}
+    >
+      {children}
+    </button>
+  );
+}
+
+// Лог событий
+function EventLog({ logs }: { logs: string[] }) {
+  const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const targets = { projects: 847, lines: 142857, vibes: 9999, bugs: 0 };
-    const duration = 2000;
-    const steps = 60;
-    const interval = duration / steps;
-    let step = 0;
-
-    const timer = setInterval(() => {
-      step++;
-      const progress = Math.min(step / steps, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setCounts({
-        projects: Math.floor(targets.projects * eased),
-        lines: Math.floor(targets.lines * eased),
-        vibes: Math.floor(targets.vibes * eased),
-        bugs: 0,
-      });
-      if (step >= steps) clearInterval(timer);
-    }, interval);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  const stats = [
-    { label: "Проектов создано", value: counts.projects.toLocaleString(), icon: "🚀" },
-    { label: "Строк кода", value: counts.lines.toLocaleString(), icon: "💻" },
-    { label: "Вайбов поймано", value: counts.vibes.toLocaleString(), icon: "✨" },
-    { label: "Багов", value: counts.bugs.toString(), icon: "🐛" },
-  ];
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [logs]);
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      {stats.map((stat, i) => (
-        <div
-          key={i}
-          className="glass-card p-6 text-center"
-          style={{ animationDelay: `${i * 0.1}s` }}
-        >
-          <div className="text-3xl mb-2">{stat.icon}</div>
-          <div className="text-2xl font-black bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-            {stat.value}
+    <div className="glass-card p-4">
+      <h4 className="text-sm font-bold text-gray-300 mb-2 flex items-center gap-2">
+        <span>📋</span> Журнал событий
+      </h4>
+      <div ref={logRef} className="h-32 overflow-y-auto space-y-1 font-mono text-xs">
+        {logs.map((log, i) => (
+          <div key={i} className="text-gray-400 border-l-2 border-purple-500/30 pl-2 py-0.5">
+            <span className="text-gray-600">[{new Date().toLocaleTimeString()}]</span> {log}
           </div>
-          <div className="text-sm text-gray-400 mt-1">{stat.label}</div>
-        </div>
-      ))}
+        ))}
+        {logs.length === 0 && (
+          <div className="text-gray-600 italic">Нет событий...</div>
+        )}
+      </div>
     </div>
   );
 }
 
-function PhilosophySection() {
-  const principles = [
-    { icon: "💭", title: "Опиши вайб", desc: "Не пиши ТЗ — опиши ощущение. 'Хочу чтобы было красиво и быстро' — это уже начало." },
-    { icon: "🤖", title: "AI делает магию", desc: "Ты думаешь — AI кодит. Ты говоришь 'ещё чуть анимации' — и оно работает." },
-    { icon: "🎨", title: "Итерации > perfection", desc: "Не стремись к идеалу с первого раза. Вайбкодинг — это процесс, а не результат." },
-    { icon: "⚡", title: "Скорость — это всё", desc: "От идеи до прототипа за минуты, не за недели. Движение важнее совершенства." },
-  ];
-
-  return (
-    <div className="grid md:grid-cols-2 gap-6">
-      {principles.map((p, i) => (
-        <div key={i} className="glass-card p-6 neon-border rounded-2xl">
-          <div className="text-4xl mb-3">{p.icon}</div>
-          <h4 className="text-lg font-bold mb-2 text-white">{p.title}</h4>
-          <p className="text-gray-400 text-sm leading-relaxed">{p.desc}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
+// Основной компонент
 export default function App() {
-  const [scrollY, setScrollY] = useState(0);
+  const [state, setState] = useState<FurnaceState>({
+    temperature: 25,
+    targetTemp: 1650,
+    airFlow: 0,
+    fuelFlow: 0,
+    meltLevel: 0,
+    carbonContent: 4.2,
+    stage: 'idle',
+    isRunning: false,
+    scrapLoaded: 0,
+    pigIronLoaded: 0,
+    limestoneLoaded: 0,
+    oxygenFlow: 0,
+    slagAmount: 0,
+    elapsed: 0,
+  });
 
-  useEffect(() => {
-    const handleScroll = () => setScrollY(window.scrollY);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [autoMode, setAutoMode] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const addLog = useCallback((msg: string) => {
+    setLogs(prev => [...prev.slice(-50), msg]);
   }, []);
 
+  // Симуляция физики печи
+  useEffect(() => {
+    intervalRef.current = setInterval(() => {
+      setState(prev => {
+        if (!prev.isRunning && prev.stage === 'idle') return prev;
+
+        const newState = { ...prev };
+        newState.elapsed += 1;
+
+        // Нагрев/остывание
+        if (prev.fuelFlow > 0) {
+          const heatGain = prev.fuelFlow * 0.8 + prev.airFlow * 0.3;
+          newState.temperature = Math.min(prev.temperature + heatGain * 0.1, 1800);
+        } else {
+          newState.temperature = Math.max(prev.temperature - 2, 25);
+        }
+
+        // Плавление
+        if (prev.temperature > 1400 && prev.scrapLoaded + prev.pigIronLoaded > 0) {
+          const meltRate = (prev.temperature - 1400) * 0.002;
+          newState.meltLevel = Math.min(prev.meltLevel + meltRate, 100);
+        }
+
+        // Углерод выгорает при высокой температуре и кислороде
+        if (prev.temperature > 1500 && prev.oxygenFlow > 0) {
+          newState.carbonContent = Math.max(prev.carbonContent - prev.oxygenFlow * 0.001, 0.05);
+          newState.slagAmount = Math.min(prev.slagAmount + 0.1, 30);
+        }
+
+        return newState;
+      });
+    }, 100);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  // Автоматический цикл плавки
+  useEffect(() => {
+    if (!autoMode) return;
+
+    const stageTimers: Record<string, number> = {
+      loading: 0,
+      heating: 0,
+      melting: 0,
+      refining: 0,
+      tapping: 0,
+    };
+
+    const autoInterval = setInterval(() => {
+      setState(prev => {
+        if (!prev.isRunning) return prev;
+
+        const newState = { ...prev };
+
+        switch (prev.stage) {
+          case 'idle':
+            newState.stage = 'loading';
+            newState.scrapLoaded = 60;
+            newState.pigIronLoaded = 30;
+            newState.limestoneLoaded = 10;
+            addLog('📦 Автоматическая завалка шихты');
+            break;
+
+          case 'loading':
+            stageTimers.loading++;
+            if (stageTimers.loading > 30) {
+              newState.stage = 'heating';
+              newState.fuelFlow = 80;
+              newState.airFlow = 70;
+              addLog('🔥 Начало разогрева печи');
+              stageTimers.loading = 0;
+            }
+            break;
+
+          case 'heating':
+            stageTimers.heating++;
+            if (prev.temperature > 1400) {
+              newState.stage = 'melting';
+              addLog('💧 Достигнута температура плавления');
+              stageTimers.heating = 0;
+            }
+            break;
+
+          case 'melting':
+            stageTimers.melting++;
+            if (prev.meltLevel > 80) {
+              newState.stage = 'refining';
+              newState.oxygenFlow = 50;
+              addLog('⚗️ Начало рафинирования стали');
+              stageTimers.melting = 0;
+            }
+            break;
+
+          case 'refining':
+            stageTimers.refining++;
+            if (prev.carbonContent < 0.5) {
+              newState.stage = 'tapping';
+              newState.oxygenFlow = 0;
+              addLog('🌊 Сталь готова! Начинаем выпуск');
+              stageTimers.refining = 0;
+            }
+            break;
+
+          case 'tapping':
+            stageTimers.tapping++;
+            newState.meltLevel = Math.max(prev.meltLevel - 3, 0);
+            if (prev.meltLevel <= 0) {
+              newState.stage = 'idle';
+              newState.isRunning = false;
+              newState.fuelFlow = 0;
+              newState.airFlow = 0;
+              newState.carbonContent = 4.2;
+              newState.slagAmount = 0;
+              addLog('✅ Плавка завершена! Печь готова к новому циклу');
+              stageTimers.tapping = 0;
+            }
+            break;
+        }
+
+        return newState;
+      });
+    }, 100);
+
+    return () => clearInterval(autoInterval);
+  }, [autoMode, addLog]);
+
+  // Обработчики
+  const handleStart = () => {
+    setState(prev => ({ ...prev, isRunning: true }));
+    addLog('▶️ Печь запущена');
+  };
+
+  const handleStop = () => {
+    setState(prev => ({
+      ...prev,
+      isRunning: false,
+      fuelFlow: 0,
+      airFlow: 0,
+      oxygenFlow: 0,
+      stage: 'idle',
+    }));
+    addLog('⏹️ Печь остановлена');
+  };
+
+  const handleLoadScrap = () => {
+    setState(prev => ({
+      ...prev,
+      scrapLoaded: Math.min(prev.scrapLoaded + 20, 100),
+      stage: prev.stage === 'idle' ? 'loading' : prev.stage,
+    }));
+    addLog('📦 Загружен металлолом (+20%)');
+  };
+
+  const handleLoadPigIron = () => {
+    setState(prev => ({
+      ...prev,
+      pigIronLoaded: Math.min(prev.pigIronLoaded + 15, 100),
+      stage: prev.stage === 'idle' ? 'loading' : prev.stage,
+    }));
+    addLog('📦 Загружен чугун (+15%)');
+  };
+
+  const handleLoadLimestone = () => {
+    setState(prev => ({
+      ...prev,
+      limestoneLoaded: Math.min(prev.limestoneLoaded + 10, 100),
+    }));
+    addLog('📦 Загружен известняк (+10%)');
+  };
+
+  const handleHeat = () => {
+    setState(prev => ({
+      ...prev,
+      fuelFlow: Math.min(prev.fuelFlow + 20, 100),
+      airFlow: Math.min(prev.airFlow + 15, 100),
+      isRunning: true,
+    }));
+    addLog('🔥 Увеличена подача топлива');
+  };
+
+  const handleCool = () => {
+    setState(prev => ({
+      ...prev,
+      fuelFlow: Math.max(prev.fuelFlow - 20, 0),
+      airFlow: Math.max(prev.airFlow - 15, 0),
+    }));
+    addLog('❄️ Уменьшена подача топлива');
+  };
+
+  const handleOxygen = () => {
+    setState(prev => ({
+      ...prev,
+      oxygenFlow: prev.oxygenFlow > 0 ? 0 : 50,
+    }));
+    addLog(state.oxygenFlow > 0 ? '💨 Продувка кислородом отключена' : '💨 Включена продувка кислородом');
+  };
+
+  const handleTap = () => {
+    if (state.meltLevel > 20) {
+      setState(prev => ({ ...prev, stage: 'tapping' }));
+      addLog('🌊 Начат выпуск стали');
+    }
+  };
+
+  const handleAutoMode = () => {
+    setAutoMode(prev => !prev);
+    if (!autoMode) {
+      addLog('🤖 Автоматический режим ВКЛЮЧЁН');
+    } else {
+      addLog('👤 Автоматический режим ВЫКЛЮЧЕН');
+    }
+  };
+
+  const stageInfo = STAGE_INFO[state.stage];
+
   return (
-    <div className="gradient-bg min-h-screen relative">
-      <Particles />
-
-      {/* Hero Section */}
-      <section className="relative z-10 min-h-screen flex flex-col items-center justify-center px-4 text-center">
-        <div
-          className="transition-transform duration-100"
-          style={{ transform: `translateY(${scrollY * 0.3}px)` }}
-        >
-          <div className="mb-6 text-6xl md:text-8xl animate-bounce">
-            ✨
+    <div className="gradient-bg min-h-screen">
+      {/* Header */}
+      <header className="relative z-10 border-b border-white/5 bg-black/20 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">🏭</span>
+            <div>
+              <h1 className="text-xl font-black bg-gradient-to-r from-orange-400 to-red-400 bg-clip-text text-transparent">
+                Мартеновская печь
+              </h1>
+              <p className="text-xs text-gray-500">Интерактивный прототип • Симулятор плавки стали</p>
+            </div>
           </div>
-          <h1 className="text-5xl md:text-7xl font-black mb-4 glow-text">
-            <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-400 bg-clip-text text-transparent">
-              ВАЙБКОДИНГ
-            </span>
-          </h1>
-          <p className="text-xl md:text-2xl text-gray-300 max-w-2xl mx-auto mb-8 leading-relaxed">
-            Когда ты просто <span className="text-purple-400 font-bold">описываешь</span> что хочешь,
-            а AI <span className="text-pink-400 font-bold">создаёт</span> это для тебя.
-            <br />
-            <span className="text-cyan-400">Без стресса. Без багов. Только вайб.</span>
-          </p>
-          <div className="flex flex-wrap gap-4 justify-center">
-            <a
-              href="#generator"
-              className="px-8 py-4 rounded-2xl font-bold text-white
-                         bg-gradient-to-r from-purple-600 to-pink-600
-                         hover:from-purple-500 hover:to-pink-500
-                         transition-all duration-300 transform hover:scale-105
-                         shadow-xl shadow-purple-500/25"
-            >
-              🎰 Попробовать вайб
-            </a>
-            <a
-              href="#terminal"
-              className="px-8 py-4 rounded-2xl font-bold text-white
-                         border border-white/20 hover:border-purple-500/50
-                         bg-white/5 hover:bg-white/10
-                         transition-all duration-300 transform hover:scale-105"
-            >
-              💻 Смотреть терминал
-            </a>
-          </div>
-        </div>
-
-        {/* Scroll indicator */}
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 animate-bounce">
-          <div className="w-6 h-10 rounded-full border-2 border-white/20 flex items-start justify-center p-2">
-            <div className="w-1.5 h-3 rounded-full bg-purple-400 animate-pulse" />
-          </div>
-        </div>
-      </section>
-
-      {/* Stats */}
-      <section className="relative z-10 px-4 py-16 max-w-6xl mx-auto">
-        <StatsSection />
-      </section>
-
-      {/* Main Content Grid */}
-      <section id="generator" className="relative z-10 px-4 py-16 max-w-6xl mx-auto">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-black mb-4">
-            <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-              Поймай свой вайб
-            </span>
-          </h2>
-          <p className="text-gray-400 max-w-xl mx-auto">
-            Интерактивные элементы, которые покажут как это работает
-          </p>
-        </div>
-        <div className="grid md:grid-cols-2 gap-8">
-          <VibeGenerator />
-          <InteractiveSection />
-        </div>
-      </section>
-
-      {/* Terminal */}
-      <section id="terminal" className="relative z-10 px-4 py-16 max-w-4xl mx-auto">
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-black mb-4">
-            <span className="bg-gradient-to-r from-green-400 to-cyan-400 bg-clip-text text-transparent">
-              Как это выглядит
-            </span>
-          </h2>
-          <p className="text-gray-400">Смотри — вайбкодинг в действии</p>
-        </div>
-        <Terminal />
-      </section>
-
-      {/* Vibe Levels */}
-      <section className="relative z-10 px-4 py-16 max-w-6xl mx-auto">
-        <div className="grid md:grid-cols-2 gap-8 items-start">
-          <VibeLevels />
-          <div className="glass-card p-8">
-            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <span className="text-2xl">🧘</span> Что такое вайбкодинг?
-            </h3>
-            <div className="space-y-4 text-gray-300 leading-relaxed">
-              <p>
-                <strong className="text-purple-400">Вайбкодинг</strong> — это новый способ создания 
-                программного обеспечения, где главное — это <em>ощущение</em>, а не точная спецификация.
-              </p>
-              <p>
-                Ты не пишешь код. Ты не пишешь ТЗ. Ты просто <strong className="text-pink-400">вайбишь</strong> — 
-                описываешь что хочешь почувствовать, и AI превращает это в реальность.
-              </p>
-              <p>
-                Это как медитация, только вместо просветления ты получаешь <strong className="text-cyan-400">работающий сайт</strong>. 🧘‍♂️💻
-              </p>
+          <div className="flex items-center gap-3">
+            <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+              state.isRunning
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                : 'bg-gray-500/20 text-gray-400 border border-gray-500/30'
+            }`}>
+              {state.isRunning ? '● РАБОТАЕТ' : '○ ОСТАНОВЛЕНА'}
+            </div>
+            <div className={`px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r ${stageInfo.color} text-white`}>
+              {stageInfo.emoji} {stageInfo.name}
             </div>
           </div>
         </div>
-      </section>
+      </header>
 
-      {/* Philosophy */}
-      <section className="relative z-10 px-4 py-16 max-w-6xl mx-auto">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-black mb-4">
-            <span className="bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">
-              Философия вайба
-            </span>
-          </h2>
+      <main className="relative z-10 max-w-7xl mx-auto px-4 py-8">
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* Левая колонка - Визуализация */}
+          <div className="lg:col-span-1 space-y-6">
+            <div className="glass-card p-6">
+              <FurnaceSVG state={state} />
+            </div>
+
+            {/* Текущий этап */}
+            <div className="glass-card p-4">
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-2xl">{stageInfo.emoji}</span>
+                <div>
+                  <h4 className={`font-bold bg-gradient-to-r ${stageInfo.color} bg-clip-text text-transparent`}>
+                    {stageInfo.name}
+                  </h4>
+                  <p className="text-xs text-gray-400">{stageInfo.desc}</p>
+                </div>
+              </div>
+              <div className="mt-3 text-xs text-gray-500">
+                Время работы: {Math.floor(state.elapsed / 10)}с
+              </div>
+            </div>
+          </div>
+
+          {/* Центральная колонка - Показатели */}
+          <div className="lg:col-span-1 space-y-4">
+            <h3 className="text-lg font-bold text-gray-200 flex items-center gap-2">
+              <span>📊</span> Параметры печи
+            </h3>
+
+            <Gauge value={state.temperature} max={1800} label="Температура" unit="°C" color="from-red-500 to-orange-500" icon="🌡️" />
+            <Gauge value={state.meltLevel} max={100} label="Уровень расплава" unit="%" color="from-orange-500 to-yellow-500" icon="💧" />
+            <Gauge value={state.carbonContent} max={4.5} label="Углерод" unit="%" color="from-purple-500 to-pink-500" icon="⚗️" />
+            <Gauge value={state.fuelFlow} max={100} label="Подача топлива" unit="%" color="from-yellow-500 to-amber-500" icon="⛽" />
+            <Gauge value={state.airFlow} max={100} label="Подача воздуха" unit="%" color="from-cyan-500 to-blue-500" icon="💨" />
+            <Gauge value={state.oxygenFlow} max={100} label="Кислород" unit="%" color="from-green-500 to-emerald-500" icon="🫧" />
+            <Gauge value={state.slagAmount} max={30} label="Шлак" unit="кг" color="from-gray-500 to-gray-400" icon="🪨" />
+
+            {/* Загруженные материалы */}
+            <div className="glass-card p-4">
+              <h4 className="text-sm font-bold text-gray-300 mb-3 flex items-center gap-2">
+                <span>📦</span> Загруженная шихта
+              </h4>
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-400">Металлолом</span>
+                  <span className="text-blue-400 font-mono">{state.scrapLoaded}%</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-400">Чугун</span>
+                  <span className="text-orange-400 font-mono">{state.pigIronLoaded}%</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-400">Известняк</span>
+                  <span className="text-gray-300 font-mono">{state.limestoneLoaded}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Правая колонка - Управление */}
+          <div className="lg:col-span-1 space-y-4">
+            <h3 className="text-lg font-bold text-gray-200 flex items-center gap-2">
+              <span>🎮</span> Управление
+            </h3>
+
+            {/* Основные кнопки */}
+            <div className="glass-card p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <ControlButton onClick={handleStart} disabled={state.isRunning} variant="success">
+                  ▶️ Пуск
+                </ControlButton>
+                <ControlButton onClick={handleStop} disabled={!state.isRunning} variant="danger">
+                  ⏹️ Стоп
+                </ControlButton>
+              </div>
+              <ControlButton onClick={handleAutoMode} variant={autoMode ? 'danger' : 'default'}>
+                {autoMode ? '👤 Ручной режим' : '🤖 Авто-цикл'}
+              </ControlButton>
+            </div>
+
+            {/* Загрузка */}
+            <div className="glass-card p-4">
+              <h4 className="text-sm font-bold text-gray-300 mb-3">📦 Загрузка шихты</h4>
+              <div className="space-y-2">
+                <ControlButton onClick={handleLoadScrap} disabled={state.scrapLoaded >= 100}>
+                  Металлолом +20%
+                </ControlButton>
+                <ControlButton onClick={handleLoadPigIron} disabled={state.pigIronLoaded >= 100}>
+                  Чугун +15%
+                </ControlButton>
+                <ControlButton onClick={handleLoadLimestone} disabled={state.limestoneLoaded >= 100}>
+                  Известняк +10%
+                </ControlButton>
+              </div>
+            </div>
+
+            {/* Температура */}
+            <div className="glass-card p-4">
+              <h4 className="text-sm font-bold text-gray-300 mb-3">🔥 Температурный режим</h4>
+              <div className="grid grid-cols-2 gap-2">
+                <ControlButton onClick={handleHeat} disabled={!state.isRunning}>
+                  🔺 Нагрев
+                </ControlButton>
+                <ControlButton onClick={handleCool}>
+                  🔻 Охлаждение
+                </ControlButton>
+              </div>
+            </div>
+
+            {/* Процесс */}
+            <div className="glass-card p-4">
+              <h4 className="text-sm font-bold text-gray-300 mb-3">⚗️ Процесс плавки</h4>
+              <div className="space-y-2">
+                <ControlButton onClick={handleOxygen} disabled={state.temperature < 1200}>
+                  {state.oxygenFlow > 0 ? '🚫 Откл. кислород' : '💨 Продувка O₂'}
+                </ControlButton>
+                <ControlButton onClick={handleTap} disabled={state.meltLevel < 20} variant="success">
+                  🌊 Выпуск стали
+                </ControlButton>
+              </div>
+            </div>
+
+            {/* Журнал */}
+            <EventLog logs={logs} />
+          </div>
         </div>
-        <PhilosophySection />
-      </section>
+
+        {/* Информационная панель */}
+        <div className="mt-8 glass-card p-6">
+          <h3 className="text-lg font-bold text-gray-200 mb-4 flex items-center gap-2">
+            <span>📖</span> О мартеновской печи
+          </h3>
+          <div className="grid md:grid-cols-3 gap-6 text-sm text-gray-400">
+            <div>
+              <h4 className="text-white font-semibold mb-2">🏗️ Конструкция</h4>
+              <p>Мартеновская печь — регенеративная пламенная печь для переработки чугуна и металлического лома в сталь. Состоит из рабочего пространства (ванны), свода, головок для подачи газа и воздуха, регенераторов для подогрева.</p>
+            </div>
+            <div>
+              <h4 className="text-white font-semibold mb-2">⚙️ Процесс плавки</h4>
+              <p>1. Завалка шихты → 2. Разогрев до 1400-1600°C → 3. Плавление → 4. Рафинирование (окисление примесей) → 5. Выпуск стали. Длительность плавки: 6-12 часов.</p>
+            </div>
+            <div>
+              <h4 className="text-white font-semibold mb-2">📐 Характеристики</h4>
+              <ul className="space-y-1">
+                <li>• Вместимость: 100-500 тонн</li>
+                <li>• Температура: до 1800°C</li>
+                <li>• Топливо: мазут, природный газ</li>
+                <li>• Производительность: 8-15 т/час</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </main>
 
       {/* Footer */}
-      <footer className="relative z-10 px-4 py-12 text-center border-t border-white/5">
-        <p className="text-gray-500 text-sm">
-          Сделано с ✨ вайбом и нулевым стрессом
-        </p>
-        <p className="text-gray-600 text-xs mt-2">
-          Вайбкодинг — это не баг, это фича 🎯
+      <footer className="relative z-10 border-t border-white/5 mt-8 py-6 text-center">
+        <p className="text-gray-600 text-xs">
+          Интерактивный прототип мартеновской печи • Симуляция для образовательных целей 🏭
         </p>
       </footer>
     </div>
